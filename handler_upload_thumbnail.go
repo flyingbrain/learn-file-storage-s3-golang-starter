@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -46,7 +47,18 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 
 	defer file.Close()
 
-	t := strings.Split(header.Header.Get("Content-type"), "/")
+	t := header.Header.Get("Content-type")
+
+	mediatype, _, err := mime.ParseMediaType(t)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Can not get filetype", err)
+		return
+	}
+
+	if mediatype != "image/png" && mediatype != "image/jpeg" {
+		respondWithError(w, http.StatusInternalServerError, "allowed only image", nil)
+		return
+	}
 
 	videoData, err := cfg.db.GetVideo(videoID)
 	if err != nil {
@@ -59,7 +71,8 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	name := fmt.Sprintf("%s.%s", videoID.String(), t[1])
+	filetype := strings.Split(mediatype, "/")
+	name := fmt.Sprintf("%s.%s", videoID.String(), filetype[1])
 	path := filepath.Join(cfg.assetsRoot, name)
 
 	imgFile, err := os.Create(path)
