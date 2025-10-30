@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -75,7 +74,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	filetype := strings.Split(mediatype, "/")
 	name := fmt.Sprintf("%s.%s", "tubely-upload", filetype[1])
-	tFile, err := os.CreateTemp("./samples", name)
+	tFile, err := os.CreateTemp("", name)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "can not create file", err)
 	}
@@ -107,16 +106,31 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		ratio = "portrait"
 	}
 
+	fastPath, err := processVideoForFastStart(tFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "error processing viedo", err)
+		return
+	}
+
+	fastFile, err := os.Open(fastPath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "can not open fast video ", err)
+		return
+	}
+
+	defer fastFile.Close()
+	defer os.Remove(fastFile.Name())
+
 	s3FileName := ratio + "/" + hex.EncodeToString(b) + ".mp4"
-	tFile.Seek(0, io.SeekStart)
+	fastFile.Seek(0, io.SeekStart)
 	s3Params := s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
 		Key:         &s3FileName,
-		Body:        tFile,
+		Body:        fastFile,
 		ContentType: &mediatype,
 	}
 
-	_, err = cfg.s3Client.PutObject(context.Background(), &s3Params)
+	_, err = cfg.s3Client.PutObject(r.Context(), &s3Params)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "s3 file uploading error", err)
 	}
