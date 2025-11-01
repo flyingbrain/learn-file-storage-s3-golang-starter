@@ -2,10 +2,16 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
 	"os/exec"
+	"strings"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
 )
 
 type Stream struct {
@@ -81,4 +87,31 @@ func processVideoForFastStart(filepath string) (string, error) {
 	}
 
 	return outPath, nil
+}
+
+func gneratePresignedURL(s3Client *s3.Client, bucket, key string, expiteTime time.Duration) (string, error) {
+	pClint := s3.NewPresignClient(s3Client)
+	req, err := pClint.PresignGetObject(context.Background(),
+		&s3.GetObjectInput{Bucket: &bucket, Key: &key},
+		s3.WithPresignExpires(expiteTime))
+	if err != nil {
+		return "", err
+	}
+
+	return req.URL, nil
+}
+
+func (cfg *apiConfig) dbVideoToSignedVideo(video database.Video) (database.Video, error) {
+	params := strings.Split(*video.VideoURL, ",")
+	if len(params) != 2 {
+		return video, fmt.Errorf("Incorect video URL")
+	}
+	url, err := gneratePresignedURL(cfg.s3Client, params[0], params[1], time.Minute)
+	if err != nil {
+		return video, err
+	}
+
+	video.VideoURL = &url
+
+	return video, nil
 }
