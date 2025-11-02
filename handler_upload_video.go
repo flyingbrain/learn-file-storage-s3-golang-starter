@@ -41,13 +41,13 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	r.ParseMultipartForm(maxMemory)
 
-	videoData, err := cfg.db.GetVideo(videoID)
+	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Can not find the video", err)
 		return
 	}
 
-	if videoData.UserID != userID {
+	if video.UserID != userID {
 		respondWithError(w, http.StatusUnauthorized, "You don't have permissions", nil)
 		return
 	}
@@ -135,18 +135,13 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusInternalServerError, "s3 file uploading error", err)
 	}
 
-	url := fmt.Sprintf("%s,%s", cfg.s3Bucket, s3FileName)
-	videoData.VideoURL = &url
+	url := fmt.Sprintf("%s/%s", cfg.s3CfDistribution, s3FileName)
+	video.VideoURL = &url
 
-	if err := cfg.db.UpdateVideo(videoData); err != nil {
+	if err := cfg.db.UpdateVideo(video); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to update video", err)
 		return
 	}
 
-	signedVideo, err := cfg.dbVideoToSignedVideo(videoData)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "can not generate sined URL", err)
-	}
-
-	respondWithJSON(w, http.StatusOK, signedVideo)
+	respondWithJSON(w, http.StatusOK, video)
 }
